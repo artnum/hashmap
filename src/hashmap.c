@@ -23,8 +23,9 @@ HashMap *hashmap_create(size_t capacity, HashMapHashFunction hash_function,
 }
 
 #define KEY_EQU(a, b) (((a).pkey == (b).pkey) && ((a).skey == (b).skey))
-static inline HashMapBucketItem *_get_item(HashMap *map, HashMapBucketKey key,
-                                           bool empty, HashMapBucket **n) {
+
+static HashMapBucketItem *_get_item(HashMap *map, HashMapBucketKey key,
+                                    bool empty, HashMapBucket **n) {
   HashMapBucket *node = &map->table[key.pkey % map->capacity];
   if (n) {
     *n = node;
@@ -33,7 +34,8 @@ static inline HashMapBucketItem *_get_item(HashMap *map, HashMapBucketKey key,
     return NULL;
   }
   size_t idx = key.skey % node->capacity;
-  for (size_t i = 0; i < node->capacity; i++) {
+  size_t i = 0;
+  for (i = 0; i < node->capacity; i++) {
     /* find the node */
     if (node->items[(idx + i) % node->capacity].data != NULL &&
         KEY_EQU(node->items[(idx + i) % node->capacity].key, key)) {
@@ -47,7 +49,7 @@ static inline HashMapBucketItem *_get_item(HashMap *map, HashMapBucketKey key,
   return NULL;
 }
 
-static inline bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
+static bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
   HashMapBucket *node = &map->table[key.pkey % map->capacity];
   if (node->count + 1 < node->capacity) {
     return true;
@@ -67,7 +69,8 @@ static inline bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
       map->_tmp_capacity = node->capacity;
     }
 
-    for (size_t i = 0; i < node->capacity; i++) {
+    size_t i = 0;
+    for (i = 0; i < node->capacity; i++) {
       memcpy(&map->_tmp[i], &node->items[i], sizeof(*node->items));
     }
 
@@ -80,9 +83,10 @@ static inline bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
     node->items = tmp;
     node->capacity = new_capacity;
     memset(node->items, 0, sizeof(*node->items) * node->capacity);
-    for (size_t i = 0; i < old_capacity; i++) {
+    size_t j = 0;
+    for (i = 0; i < old_capacity; i++) {
       size_t idx = map->_tmp[i].key.skey % node->capacity;
-      for (size_t j = 0; j < node->capacity; j++) {
+      for (j = 0; j < node->capacity; j++) {
         if (node->items[(idx + j) % node->capacity].data == NULL) {
           memcpy(&node->items[(idx + j) % node->capacity], &map->_tmp[i],
                  sizeof(map->_tmp[i]));
@@ -101,7 +105,7 @@ static inline bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
   return true;
 }
 
-static inline HashMapBucketKey _compute_key(HashMap *map, const char *key) {
+static HashMapBucketKey _compute_key(HashMap *map, const char *key) {
   size_t key_len = strlen(key);
   assert(key_len > 0);
   uint64_t ukey = map->hash_function(key, key_len);
@@ -153,7 +157,8 @@ bool hashmap_delete(HashMap *map, const char *key, void **data) {
   HashMapBucketKey ukey = _compute_key(map, key);
   HashMapBucket node = map->table[ukey.pkey % map->capacity];
   size_t idx = ukey.skey % node.capacity;
-  for (size_t i = 0; i < node.capacity; i++) {
+  size_t i = 0;
+  for (i = 0; i < node.capacity; i++) {
     if (node.items[(idx + i) % node.capacity].data == NULL) {
       return false;
     }
@@ -173,11 +178,13 @@ bool hashmap_delete(HashMap *map, const char *key, void **data) {
 }
 
 void hashmap_iterate(HashMap *map, HashMapIterateItemFunction callback) {
-  for (size_t i = 0; i < map->capacity; i++) {
+  size_t i = 0;
+  for (i = 0; i < map->capacity; i++) {
     if (map->table[i].capacity == 0) {
       continue;
     }
-    for (size_t j = 0; j < map->table[i].capacity; j++) {
+    size_t j = 0;
+    for (j = 0; j < map->table[i].capacity; j++) {
       if (map->table[i].items[j].data != NULL) {
         callback((map->table[i].items[j].key), map->table[i].items[j].data);
       }
@@ -187,10 +194,12 @@ void hashmap_iterate(HashMap *map, HashMapIterateItemFunction callback) {
 
 void hashmap_destroy(HashMap *map) {
   assert(map != NULL);
-  for (size_t i = 0; i < map->capacity; i++) {
+  size_t i = 0;
+  for (i = 0; i < map->capacity; i++) {
     if (map->table[i].items != NULL) {
       if (map->free_item) {
-        for (size_t j = 0; j < map->table[i].capacity; j++) {
+        size_t j = 0;
+        for (j = 0; j < map->table[i].capacity; j++) {
           if (map->table[i].items[j].data != NULL) {
             map->free_item(map->table[i].items[j].data);
           }

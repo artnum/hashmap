@@ -7,8 +7,8 @@
 
 /* A key */
 typedef struct {
-  uint32_t pkey; // primary key used for primary hash table
-  uint32_t skey; // secondary key used for secondary hash table
+  uint32_t pkey; /* primary key used for primary hash table */
+  uint32_t skey; /* secondary key used for secondary hash table */
 } HashMapBucketKey;
 
 /* An item */

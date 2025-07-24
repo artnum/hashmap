@@ -1,8 +1,22 @@
 #include "../src/include/hashmap.h"
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <xxhash.h>
+
+char *strdup(const char *string) {
+  assert(string != NULL);
+  size_t len = strlen(string);
+  char *dup = NULL;
+  if (len > 0) {
+    dup = calloc(len + 1, sizeof(*dup));
+    if (dup) {
+      memcpy(dup, string, len);
+    }
+  }
+  return dup;
+}
 
 void dump(HashMapBucketKey key, void *data) {
   printf("%16lx : %s", *(uint64_t *)&key, (char *)data);
@@ -12,7 +26,8 @@ int main(int argc, char **argv) {
   char *files[] = {"/usr/share/dict/words", __FILE__, "/usr/include/stdio.h",
                    "src/hashmap.c", 0};
   HashMap *map = hashmap_create(501173, (HashMapHashFunction)XXH3_64bits, free);
-  for (int f = 0; files[f] != 0; f++) {
+  int f = 0;
+  for (f = 0; files[f] != 0; f++) {
     if (!map) {
       exit(EXIT_FAILURE);
     }
