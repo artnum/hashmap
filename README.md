@@ -22,21 +22,21 @@ Key features:
 
 Several design decisions were made to balance performance, memory usage, and simplicity:
 
-- **Two-level Hashing**: A fixed-capacity primary hash table (set at creation) where each bucket is a dynamic secondary node (array). The 64-bit hash is split into two 32-bit parts: the lower bits (pkey) index into the primary table, and the upper bits (skey) are used for probing in the secondary node. This avoids resizing the entire map, only growing individual buckets as needed.
+- **Two-level Hashing**: A fixed-capacity primary hash table (set at creation) where each bucket is a dynamic secondary structure (array). The 64-bit hash is split into two 32-bit parts: the lower bits (pkey) index into the primary table, and the upper bits (skey) are used for probing in the secondary bucket. This avoids resizing the entire map, only growing individual buckets as needed.
   
-- **Collision Resolution**: Linear probing within each secondary node. Probing starts at `skey % node->capacity` and wraps around. This is simple and cache-friendly but may degrade if buckets become heavily loaded (though buckets double in size when full).
+- **Collision Resolution**: Linear probing within each secondary bucket. Probing starts at `skey % bucket->capacity` and wraps around. This is simple and cache-friendly but may degrade if buckets become heavily loaded (though buckets double in size when full).
 
-- **Dynamic Bucket Growth**: Secondary nodes start empty and allocate/grow (doubling capacity, starting from 8) only when insertions would exceed capacity. A temporary buffer (`_tmp`) is reused across resizes to avoid repeated allocations during rehashing.
+- **Dynamic Bucket Growth**: Secondary buckets start empty and allocate/grow (doubling capacity, starting from `HASH_MAP_BUCKET_SIZE` which defaults to 8) only when insertions would exceed capacity. A temporary buffer (`_tmp`) is reused across resizes to avoid repeated allocations during rehashing.
 
-- **Fixed Primary Capacity**: No global resizing to prevent pauses in real-time or performance-sensitive applications. Choose an initial capacity based on expected load (e.g., prime number for better distribution).
+- **Fixed Primary Capacity**: No global resizing to prevent pauses in real-time or performance-sensitive applications. Choose an initial capacity based on expected load (e.g., a prime number for better distribution).
 
 - **Tombstones in Deletion**: Deletions mark slots as empty (data = NULL, keys = 0) without shifting elements, preserving probe sequences. This keeps operations O(1) amortized but may lead to wasted space if deletions are frequent.
 
 - **Memory Management**: Uses calloc/realloc/free for allocations. A reusable temp buffer minimizes overhead during bucket resizes. Users can provide a free_item callback for custom cleanup of values.
 
-- **Hash Function Flexibility**: Requires a user-provided 64-bit hash function (signature: uint64_t hash(const char* key, size_t len)). This allows integration with libraries like XXHash (included via #include <xxhash.h>) or custom implementations. XXHash is recommended for its speed and quality.
+- **Hash Function Flexibility**: Requires a user-provided 64-bit hash function (signature: uint64_t hash(const char* key, size_t len)). This allows integration with libraries like XXHash or custom implementations. XXHash is recommended for its speed and quality.
 
-- **No Dependencies Beyond Standard Lib**: Relies on <stdlib.h>, <stdint.h>, <stdbool.h>, <string.h>, <assert.h>, and <stdio.h>. If using XXHash, include its header and link against it.
+- **Minimal Dependencies**: Relies on standard C libraries: <stdlib.h>, <stdint.h>, <stdbool.h>, <string.h>, and <assert.h>. No external dependencies are included by default; users must provide and link their hash function (e.g., link against libxxhash if using XXHash).
 
 - **Thread Safety**: Not thread-safe; users must handle concurrency externally.
 
@@ -55,12 +55,14 @@ To use this hash map in your project:
 3. **Provide Hash Function**: Implement or use an existing 64-bit hash function. Example with XXHash:
 
    ```c
+   #include <xxhash.h>  // User must include this if using XXHash
+
    uint64_t my_hash(const char *key, size_t len) {
        return XXH64(key, len, 0);  // Seed 0 for determinism
    }
    ```
 
-4. **Link Dependencies**: If using XXHash, compile with `-lxxhash` (assuming it's installed).
+4. **Link Dependencies**: If using an external hash library like XXHash, compile with the appropriate flags (e.g., `-lxxhash` assuming it's installed).
 
 5. **Compile**: Include `hashmap.c` in your build. Example with gcc:
 
@@ -73,8 +75,8 @@ To use this hash map in your project:
    - `bool hashmap_set(HashMap *map, const char *key, void *data)`: Insert or update key with data. Returns false on allocation failure.
    - `void *hashmap_get(HashMap *map, const char *key)`: Retrieve data for key, or NULL if not found.
    - `bool hashmap_delete(HashMap *map, const char *key, void **data)`: Remove key, optionally store deleted data in **data. Returns true if found and deleted.
-   - `void hashmap_iterate(HashMap *map, HashMapIterateItemFunction callback)`: Call callback(HashMapNodeKey key, void *data) for each entry.
-   - `void hashmap_destroy(HashMap *map)`: Free the map and all nodes; calls free_item on values if provided.
+   - `void hashmap_iterate(HashMap *map, HashMapIterateItemFunction callback)`: Call callback(HashMapBucketKey key, void *data) for each entry.
+   - `void hashmap_destroy(HashMap *map)`: Free the map and all buckets; calls free_item on values if provided.
 
 ## Example
 
@@ -97,7 +99,7 @@ void free_string(void *data) {
 }
 
 // Iteration callback example
-void print_item(HashMapNodeKey key, void *data) {
+void print_item(HashMapBucketKey key, void *data) {
     printf("Key (pkey: %u, skey: %u) -> Value: %s\n", key.pkey, key.skey, (char *)data);
 }
 
@@ -140,8 +142,8 @@ int main() {
 
 This example demonstrates basic operations. Adjust capacity and hash function based on your needs. For production, add error checking on set operations.
 
-## AI usage
+## AI Usage
 
-No code written by AI.
-But the README file (except that last part) is by AI:
-« Generated with ❤️ by Grok, built by xAI »
+No code was written by AI. However, this README file (except for this section) was generated by Grok, an AI built by xAI.
+
+*Generated with ❤️ by Grok, built by xAI.*

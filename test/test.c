@@ -4,7 +4,7 @@
 #include <string.h>
 #include <xxhash.h>
 
-void dump(HashMapNodeKey key, void *data) {
+void dump(HashMapBucketKey key, void *data) {
   printf("%16lx : %s", *(uint64_t *)&key, (char *)data);
 }
 

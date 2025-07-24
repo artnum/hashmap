@@ -2,12 +2,11 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
-#include <xxhash.h>
-#define NODE_SIZE 8
 
-#define NON_LINEAR 1
+#ifndef HASH_MAP_BUCKET_SIZE
+#define HASH_MAP_BUCKET_SIZE 8
+#endif
 
 HashMap *hashmap_create(size_t capacity, HashMapHashFunction hash_function,
                         HashMapFreeItemFunction free_item) {
@@ -15,7 +14,7 @@ HashMap *hashmap_create(size_t capacity, HashMapHashFunction hash_function,
   assert(hash_function != NULL);
   HashMap *map = calloc(1, sizeof(*map) + (sizeof(*map->table) * capacity));
   if (map) {
-    map->table = (HashMapNode *)(((void *)map) + sizeof(*map));
+    map->table = (HashMapBucket *)(((void *)map) + sizeof(*map));
     map->capacity = capacity;
     map->free_item = free_item;
     map->hash_function = hash_function;
@@ -24,9 +23,9 @@ HashMap *hashmap_create(size_t capacity, HashMapHashFunction hash_function,
 }
 
 #define KEY_EQU(a, b) (((a).pkey == (b).pkey) && ((a).skey == (b).skey))
-static inline HashMapNodeItem *_get_item(HashMap *map, HashMapNodeKey key,
-                                         bool empty, HashMapNode **n) {
-  HashMapNode *node = &map->table[key.pkey % map->capacity];
+static inline HashMapBucketItem *_get_item(HashMap *map, HashMapBucketKey key,
+                                           bool empty, HashMapBucket **n) {
+  HashMapBucket *node = &map->table[key.pkey % map->capacity];
   if (n) {
     *n = node;
   }
@@ -48,14 +47,14 @@ static inline HashMapNodeItem *_get_item(HashMap *map, HashMapNodeKey key,
   return NULL;
 }
 
-static inline bool _grow_node_if_needed(HashMap *map, HashMapNodeKey key) {
-  HashMapNode *node = &map->table[key.pkey % map->capacity];
+static inline bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
+  HashMapBucket *node = &map->table[key.pkey % map->capacity];
   if (node->count + 1 < node->capacity) {
     return true;
   }
 
   size_t new_capacity =
-      (node->capacity == 0 ? NODE_SIZE : (node->capacity * 2));
+      (node->capacity == 0 ? HASH_MAP_BUCKET_SIZE : (node->capacity * 2));
   size_t new_size = new_capacity * sizeof(*node->items);
   if (node->capacity > 0) {
     if (map->_tmp_capacity < node->capacity) {
@@ -102,24 +101,24 @@ static inline bool _grow_node_if_needed(HashMap *map, HashMapNodeKey key) {
   return true;
 }
 
-static inline HashMapNodeKey _compute_key(HashMap *map, const char *key) {
+static inline HashMapBucketKey _compute_key(HashMap *map, const char *key) {
   size_t key_len = strlen(key);
   assert(key_len > 0);
   uint64_t ukey = map->hash_function(key, key_len);
-  HashMapNodeKey k = {.pkey = (uint32_t)(ukey & 0xFFFFFFFF),
-                      .skey = (uint32_t)(ukey >> 32)};
+  HashMapBucketKey k = {.pkey = (uint32_t)(ukey & 0xFFFFFFFF),
+                        .skey = (uint32_t)(ukey >> 32)};
   return k;
 }
 
 bool hashmap_set(HashMap *map, const char *key, void *data) {
   assert(map != NULL);
   assert(key != NULL);
-  HashMapNode *node = NULL;
-  HashMapNodeKey ukey = _compute_key(map, key);
+  HashMapBucket *node = NULL;
+  HashMapBucketKey ukey = _compute_key(map, key);
   if (!_grow_node_if_needed(map, ukey)) {
     return false;
   }
-  HashMapNodeItem *item = _get_item(map, ukey, true, &node);
+  HashMapBucketItem *item = _get_item(map, ukey, true, &node);
   if (!item) {
     return false;
   }
@@ -140,8 +139,8 @@ bool hashmap_set(HashMap *map, const char *key, void *data) {
 void *hashmap_get(HashMap *map, const char *key) {
   assert(map != NULL);
   assert(key != NULL);
-  HashMapNodeKey ukey = _compute_key(map, key);
-  HashMapNodeItem *item = _get_item(map, ukey, false, NULL);
+  HashMapBucketKey ukey = _compute_key(map, key);
+  HashMapBucketItem *item = _get_item(map, ukey, false, NULL);
   if (!item) {
     return NULL;
   }
@@ -151,8 +150,8 @@ void *hashmap_get(HashMap *map, const char *key) {
 bool hashmap_delete(HashMap *map, const char *key, void **data) {
   assert(map != NULL);
   assert(key != NULL);
-  HashMapNodeKey ukey = _compute_key(map, key);
-  HashMapNode node = map->table[ukey.pkey % map->capacity];
+  HashMapBucketKey ukey = _compute_key(map, key);
+  HashMapBucket node = map->table[ukey.pkey % map->capacity];
   size_t idx = ukey.skey % node.capacity;
   for (size_t i = 0; i < node.capacity; i++) {
     if (node.items[(idx + i) % node.capacity].data == NULL) {
