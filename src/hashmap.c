@@ -158,6 +158,9 @@ bool hashmap_delete(HashMap *map, const char *key, void **data) {
       return false;
     }
     if (KEY_EQU(node.items[(idx + i) % node.capacity].key, ukey)) {
+      if (data != NULL) {
+        *data = node.items[(idx + i) % node.capacity].data;
+      }
       node.items[(idx + i) % node.capacity].data = NULL;
       node.items[(idx + i) % node.capacity].key.pkey = 0;
       node.items[(idx + i) % node.capacity].key.skey = 0;
