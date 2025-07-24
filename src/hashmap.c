@@ -7,23 +7,9 @@
 #ifndef HASH_MAP_BUCKET_SIZE
 #define HASH_MAP_BUCKET_SIZE 8
 #endif
-
-HashMap *hashmap_create(size_t capacity, HashMapHashFunction hash_function,
-                        HashMapFreeItemFunction free_item) {
-  assert(capacity > 0);
-  assert(hash_function != NULL);
-  HashMap *map = calloc(1, sizeof(*map) + (sizeof(*map->table) * capacity));
-  if (map) {
-    map->table = (HashMapBucket *)(((void *)map) + sizeof(*map));
-    map->capacity = capacity;
-    map->free_item = free_item;
-    map->hash_function = hash_function;
-  }
-  return map;
-}
-
 #define KEY_EQU(a, b) (((a).pkey == (b).pkey) && ((a).skey == (b).skey))
 
+/* Private function */
 static HashMapBucketItem *_get_item(HashMap *map, HashMapBucketKey key,
                                     bool empty, HashMapBucket **n) {
   HashMapBucket *node = &map->table[key.pkey % map->capacity];
@@ -69,11 +55,7 @@ static bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
       map->_tmp_capacity = node->capacity;
     }
 
-    size_t i = 0;
-    for (i = 0; i < node->capacity; i++) {
-      memcpy(&map->_tmp[i], &node->items[i], sizeof(*node->items));
-    }
-
+    memcpy(map->_tmp, node->items, sizeof(*node->items) * node->capacity);
     void *tmp = realloc(node->items, new_size);
     if (!tmp) {
       return false;
@@ -83,6 +65,7 @@ static bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
     node->items = tmp;
     node->capacity = new_capacity;
     memset(node->items, 0, sizeof(*node->items) * node->capacity);
+    size_t i = 0;
     size_t j = 0;
     for (i = 0; i < old_capacity; i++) {
       size_t idx = map->_tmp[i].key.skey % node->capacity;
@@ -112,6 +95,21 @@ static HashMapBucketKey _compute_key(HashMap *map, const char *key) {
   HashMapBucketKey k = {.pkey = (uint32_t)(ukey & 0xFFFFFFFF),
                         .skey = (uint32_t)(ukey >> 32)};
   return k;
+}
+
+/* Public API */
+HashMap *hashmap_create(size_t capacity, HashMapHashFunction hash_function,
+                        HashMapFreeItemFunction free_item) {
+  assert(capacity > 0);
+  assert(hash_function != NULL);
+  HashMap *map = calloc(1, sizeof(*map) + (sizeof(*map->table) * capacity));
+  if (map) {
+    map->table = (HashMapBucket *)(((void *)map) + sizeof(*map));
+    map->capacity = capacity;
+    map->free_item = free_item;
+    map->hash_function = hash_function;
+  }
+  return map;
 }
 
 bool hashmap_set(HashMap *map, const char *key, void *data) {
