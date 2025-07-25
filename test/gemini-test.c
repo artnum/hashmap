@@ -9,8 +9,8 @@
  * - Behavior with non-existent keys.
  * - Correctness of the iteration functionality.
  * - Memory management using the custom free function.
- * - Collision handling by forcing multiple keys into the same primary bucket.
- * - Dynamic growth of a bucket when it becomes full.
+ * - Collision handling and dynamic bucket growth.
+ * - Dynamic bucket shrinking after many deletions.
  *
  * To compile and run (assuming you are in the root of the project):
  * gcc -o test/comprehensive_test test/comprehensive_test.c src/hashmap.c
@@ -163,6 +163,74 @@ void test_collisions_and_bucket_growth() {
   printf("PASSED: %s\n\n", __FUNCTION__);
 }
 
+void test_bucket_shrinking() {
+  printf("Running: %s\n", __FUNCTION__);
+  free_counter = 0;
+
+  // Use a hash that forces collisions into one bucket
+  HashMap *map = hashmap_create(1, collision_hash, counting_free);
+  TEST_ASSERT(map != NULL, "hashmap_create should not return NULL.");
+
+  // HASH_MAP_BUCKET_SIZE defaults to 8.
+  // Insert 9 items to force the bucket to grow from 8 to 16.
+  const int initial_items = 9;
+  char key[20];
+  for (int i = 0; i < initial_items; i++) {
+    sprintf(key, "a_key_%d", i);
+    hashmap_set(map, key, strdup("some_data"));
+  }
+
+  // White-box test: check that the bucket has grown.
+  HashMapBucket *bucket = &map->table[((uint64_t)'a') % map->capacity];
+  TEST_ASSERT(bucket->capacity == 16,
+              "Bucket should have grown to capacity 16.");
+  TEST_ASSERT(bucket->count == 9, "Bucket count should be 9.");
+
+  // Now, delete items to trigger a shrink.
+  // A common shrink condition is when load factor < 25%.
+  // Deleting 7 items will leave 2. Load factor 2/16 = 12.5%, which should
+  // trigger a shrink. The bucket of capacity 16 should shrink back to 8.
+  const int items_to_delete = 7;
+  for (int i = 0; i < items_to_delete; i++) {
+    sprintf(key, "a_key_%d", i);
+    void *data = NULL;
+    hashmap_delete(map, key, &data);
+    // The data is returned by hashmap_delete, so we must free it manually.
+    TEST_ASSERT(data != NULL, "Key exists, data should be returned.");
+    if (data) {
+      free(data);
+    }
+  }
+
+  // White-box test: check that the bucket has shrunk.
+  TEST_ASSERT(bucket->capacity == 8,
+              "Bucket should have shrunk back to capacity 8.");
+  TEST_ASSERT(bucket->count == 2, "Bucket count should be 2 after deletions.");
+
+  // Verify the remaining items are still accessible and correct.
+  char *retrieved;
+  // Keys "a_key_7" and "a_key_8" should still be in the map.
+  retrieved = hashmap_get(map, "a_key_7");
+  TEST_ASSERT(retrieved != NULL, "Should find key 'a_key_7' after shrink.");
+  TEST_ASSERT(strcmp(retrieved, "some_data") == 0,
+              "Value for 'a_key_7' is incorrect.");
+
+  retrieved = hashmap_get(map, "a_key_8");
+  TEST_ASSERT(retrieved != NULL, "Should find key 'a_key_8' after shrink.");
+  TEST_ASSERT(strcmp(retrieved, "some_data") == 0,
+              "Value for 'a_key_8' is incorrect.");
+
+  // Verify a deleted key is gone.
+  retrieved = hashmap_get(map, "a_key_0");
+  TEST_ASSERT(retrieved == NULL, "Deleted key 'a_key_0' should not be found.");
+
+  // Clean up. The remaining 2 items should be freed by destroy.
+  hashmap_destroy(map);
+  TEST_ASSERT(free_counter == 2, "Destroy should free the 2 remaining items.");
+
+  printf("PASSED: %s\n\n", __FUNCTION__);
+}
+
 static int iter_count = 0;
 void iteration_callback(HashMapBucketKey key, void *data) {
   (void)key;
@@ -201,6 +269,7 @@ int main() {
 
   test_basic_operations();
   test_collisions_and_bucket_growth();
+  test_bucket_shrinking(); // New test case
   test_iteration();
 
   printf("--- All tests passed successfully! ---\n");

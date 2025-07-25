@@ -7,6 +7,10 @@
 #ifndef HASH_MAP_BUCKET_SIZE
 #define HASH_MAP_BUCKET_SIZE 8
 #endif
+#ifndef HASH_MAP_LOAD_FACTOR
+#define HASH_MAP_LOAD_FACTOR 0.75
+#endif
+
 #define KEY_EQU(a, b) (((a).pkey == (b).pkey) && ((a).skey == (b).skey))
 
 /* Private function */
@@ -35,9 +39,75 @@ static HashMapBucketItem *_get_item(HashMap *map, HashMapBucketKey key,
   return NULL;
 }
 
+static bool _shrink_node_if_needed(HashMap *map, HashMapBucketKey key) {
+  assert(map != NULL);
+  HashMapBucket *node = &map->table[key.pkey % map->capacity];
+  /* no reduction needed, just remap keys */
+  if (node->capacity == HASH_MAP_BUCKET_SIZE ||
+      node->count > node->capacity * (1 - HASH_MAP_LOAD_FACTOR)) {
+    if (map->_tmp_capacity < node->capacity) {
+      void *tmp2 = realloc(map->_tmp, node->capacity * sizeof(*node->items));
+      if (!tmp2) {
+        return false;
+      }
+      map->_tmp = tmp2;
+      map->_tmp_capacity = node->capacity;
+    }
+
+    memcpy(map->_tmp, node->items, node->capacity * (sizeof(*node->items)));
+    memset(node->items, 0, node->capacity * (sizeof(*node->items)));
+
+    size_t i = 0;
+    for (i = 0; i < node->capacity; i++) {
+      if (map->_tmp[i].data == NULL) {
+        continue;
+      }
+      size_t idx = map->_tmp[i].key.skey % node->capacity;
+      size_t j = 0;
+      for (j = 0; j < node->capacity; j++) {
+        if (node->items[(idx + j) % node->capacity].data == NULL) {
+          memcpy(&node->items[(idx + j) % node->capacity], &map->_tmp[i],
+                 sizeof(*node->items));
+          break;
+        }
+      }
+    }
+    return true;
+  }
+
+  /* We reduce the size of the bucket by creating a new items array */
+  size_t new_capacity = node->capacity / 2;
+  HashMapBucketItem *items = calloc(new_capacity, sizeof(*items));
+  if (items == NULL) {
+    return false;
+  }
+
+  size_t i = 0;
+  for (i = 0; i < node->capacity; i++) {
+    if (node->items[i].data == NULL) {
+      continue;
+    }
+    size_t idx = node->items[i].key.skey % new_capacity;
+    size_t j = 0;
+    for (j = 0; j < new_capacity; j++) {
+      if (items[(idx + j) % new_capacity].data == NULL) {
+        memcpy(&items[(idx + j) % new_capacity], &node->items[i],
+               sizeof(*node->items));
+        break;
+      }
+    }
+  }
+
+  void *tmp = node->items;
+  node->items = items;
+  node->capacity = new_capacity;
+  free(tmp);
+  return true;
+}
+
 static bool _grow_node_if_needed(HashMap *map, HashMapBucketKey key) {
   HashMapBucket *node = &map->table[key.pkey % map->capacity];
-  if (node->count + 1 < node->capacity) {
+  if (node->count + 1 < node->capacity * HASH_MAP_LOAD_FACTOR) {
     return true;
   }
 
@@ -153,21 +223,23 @@ bool hashmap_delete(HashMap *map, const char *key, void **data) {
   assert(map != NULL);
   assert(key != NULL);
   HashMapBucketKey ukey = _compute_key(map, key);
-  HashMapBucket node = map->table[ukey.pkey % map->capacity];
-  size_t idx = ukey.skey % node.capacity;
+  HashMapBucket *node = &map->table[ukey.pkey % map->capacity];
+  size_t idx = ukey.skey % node->capacity;
   size_t i = 0;
-  for (i = 0; i < node.capacity; i++) {
-    if (node.items[(idx + i) % node.capacity].data == NULL) {
+  for (i = 0; i < node->capacity; i++) {
+    if (node->items[(idx + i) % node->capacity].data == NULL) {
       return false;
     }
-    if (KEY_EQU(node.items[(idx + i) % node.capacity].key, ukey)) {
+    if (node->items[(idx + i) % node->capacity].data != NULL &&
+        KEY_EQU(node->items[(idx + i) % node->capacity].key, ukey)) {
       if (data != NULL) {
-        *data = node.items[(idx + i) % node.capacity].data;
+        *data = node->items[(idx + i) % node->capacity].data;
       }
-      node.items[(idx + i) % node.capacity].data = NULL;
-      node.items[(idx + i) % node.capacity].key.pkey = 0;
-      node.items[(idx + i) % node.capacity].key.skey = 0;
-      node.count--;
+      memset(&node->items[(idx + i) % node->capacity], 0, sizeof(*node->items));
+      node->count--;
+      if (node->count > 0) {
+        return _shrink_node_if_needed(map, ukey);
+      }
       return true;
     }
     i++;

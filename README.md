@@ -26,7 +26,8 @@ Several design decisions were made to balance performance, memory usage, and sim
   
 - **Collision Resolution**: Linear probing within each secondary bucket. Probing starts at `skey % bucket->capacity` and wraps around. This is simple and cache-friendly but may degrade if buckets become heavily loaded (though buckets double in size when full).
 
-- **Dynamic Bucket Growth**: Secondary buckets start empty and allocate/grow (doubling capacity, starting from `HASH_MAP_BUCKET_SIZE` which defaults to 8) only when insertions would exceed capacity. A temporary buffer (`_tmp`) is reused across resizes to avoid repeated allocations during rehashing.
+- **Dynamic Bucket Growth and Shrink**: Secondary buckets start empty and allocate/grow (doubling capacity, starting from `HASH_MAP_BUCKET_SIZE` (settable at compile time) which defaults to 8) only when insertions would reach `HASH_MAP_LOAD_FACTOR` (default to 0.75). A temporary buffer (`_tmp`) is reused across resizes to avoid repeated allocations during rehashing.
+Shrinking is done the same way.
 
 - **Fixed Primary Capacity**: No global resizing to prevent pauses in real-time or performance-sensitive applications. Choose an initial capacity based on expected load (e.g., a prime number for better distribution).
 
@@ -70,7 +71,8 @@ To use this hash map in your project:
    gcc -o myprogram myprogram.c hashmap.c -lxxhash
    ```
 
-   You can define, at compile time, default bucket size by adding `-HASH_MAP_BUCKET_SIZE=__X__` where `__X__` is the size you want.
+   - You can define, at compile time, default bucket size by adding `-DHASH_MAP_BUCKET_SIZE=__X__` where `__X__` is the size you want.
+   - You can change the load factor, when grow/shrink is triggered, by setting `-HASH_MAP_LOAD_FACTOR=__LF__` where `__LF__` is the load factor. By default it's 0.75.
 
 6. **API Reference**:
    - `HashMap *hashmap_create(size_t capacity, HashMapHashFunction hash_function, HashMapFreeItemFunction free_item)`: Create a map with given primary capacity (must be >0), hash function (required), and optional free_item callback (NULL if not needed).
